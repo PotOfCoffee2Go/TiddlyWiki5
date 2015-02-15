@@ -126,6 +126,7 @@ LinkWidget.prototype.handleClickEvent = function(event) {
 LinkWidget.prototype.handleDragStartEvent = function(event) {
 	if(event.target === this.domNodes[0]) {
 		if(this.to) {
+			$tw.dragInProgress = true;
 			// Set the dragging class on the element being dragged
 			$tw.utils.addClass(event.target,"tc-tiddlylink-dragging");
 			// Create the drag image elements
@@ -160,9 +161,9 @@ LinkWidget.prototype.handleDragStartEvent = function(event) {
 			if(!$tw.browser.isIE) {
 				dataTransfer.setData("text/vnd.tiddler",jsonData);
 				dataTransfer.setData("text/plain",title);
-				dataTransfer.setData("text/x-moz-url","data:text/vnd.tiddler," + encodeURI(jsonData));
+				dataTransfer.setData("text/x-moz-url","data:text/vnd.tiddler," + encodeURIComponent(jsonData));
 			}
-			dataTransfer.setData("URL","data:text/vnd.tiddler," + encodeURI(jsonData));
+			dataTransfer.setData("URL","data:text/vnd.tiddler," + encodeURIComponent(jsonData));
 			dataTransfer.setData("Text",title);
 			event.stopPropagation();
 		} else {
@@ -173,6 +174,7 @@ LinkWidget.prototype.handleDragStartEvent = function(event) {
 
 LinkWidget.prototype.handleDragEndEvent = function(event) {
 	if(event.target === this.domNodes[0]) {
+		$tw.dragInProgress = false;
 		// Remove the dragging class on the element being dragged
 		$tw.utils.removeClass(event.target,"tc-tiddlylink-dragging");
 		// Delete the drag image element
