@@ -15,7 +15,13 @@ A sync adaptor module for synchronising with MultiWikiServer-compatible servers
 var CONFIG_HOST_TIDDLER = "$:/config/multiwikiclient/host",
 	DEFAULT_HOST_TIDDLER = "$protocol$//$host$/",
 	BAG_STATE_TIDDLER = "$:/state/multiwikiclient/tiddlers/bag",
-	REVISION_STATE_TIDDLER = "$:/state/multiwikiclient/tiddlers/revision";
+	REVISION_STATE_TIDDLER = "$:/state/multiwikiclient/tiddlers/revision",
+	CONNECTION_STATE_TIDDLER = "$:/state/multiwikiclient/connection";
+
+var SERVER_NOT_CONNECTED = "NOT CONNECTED",
+	SERVER_CONNECTING_SSE = "CONNECTING SSE",
+	SERVER_CONNECTED_SSE  = "CONNECTED SSE",
+	SERVER_POLLING = "SERVER POLLING";
 
 function MultiWikiClientAdaptor(options) {
 	this.wiki = options.wiki;
@@ -26,7 +32,16 @@ function MultiWikiClientAdaptor(options) {
 	this.isLoggedIn = false;
 	this.isReadOnly = false;
 	this.logoutIsAvailable = true;
+	this.setUpdateConnectionStatus(SERVER_NOT_CONNECTED);
 }
+
+MultiWikiClientAdaptor.prototype.setUpdateConnectionStatus = function(status) {
+	this.serverUpdateConnectionStatus = status;
+	this.wiki.addTiddler({
+		title: CONNECTION_STATE_TIDDLER,
+		text: status
+	});
+};
 
 MultiWikiClientAdaptor.prototype.name = "multiwikiclient";
 
@@ -78,8 +93,8 @@ MultiWikiClientAdaptor.prototype.getTiddlerRevision = function(title) {
 };
 
 MultiWikiClientAdaptor.prototype.setTiddlerInfo = function(title,revision,bag) {
-	this.wiki.setText(BAG_STATE_TIDDLER,null,title,revision,{suppressTimestamp: true});
-	this.wiki.setText(REVISION_STATE_TIDDLER,null,title,bag,{suppressTimestamp: true});
+	this.wiki.setText(BAG_STATE_TIDDLER,null,title,bag,{suppressTimestamp: true});
+	this.wiki.setText(REVISION_STATE_TIDDLER,null,title,revision,{suppressTimestamp: true});
 };
 
 MultiWikiClientAdaptor.prototype.removeTiddlerInfo = function(title) {
@@ -88,7 +103,7 @@ MultiWikiClientAdaptor.prototype.removeTiddlerInfo = function(title) {
 };
 
 /*
-Get the current status of the TiddlyWeb connection
+Get the current status of the server connection
 */
 MultiWikiClientAdaptor.prototype.getStatus = function(callback) {
 	// Invoke the callback if present
@@ -104,83 +119,101 @@ MultiWikiClientAdaptor.prototype.getStatus = function(callback) {
 };
 
 /*
-Attempt to login and invoke the callback(err)
-*/
-MultiWikiClientAdaptor.prototype.login = function(username,password,callback) {
-	var options = {
-		url: this.host + "challenge/tiddlywebplugins.tiddlyspace.cookie_form",
-		type: "POST",
-		data: {
-			user: username,
-			password: password,
-			tiddlyweb_redirect: "/status" // workaround to marginalize automatic subsequent GET
-		},
-		callback: function(err) {
-			callback(err);
-		},
-		headers: {
-			"accept": "application/json",
-			"X-Requested-With": "TiddlyWiki"
-		}
-	};
-	this.logger.log("Logging in:",options);
-	$tw.utils.httpRequest(options);
-};
-
-/*
-*/
-MultiWikiClientAdaptor.prototype.logout = function(callback) {
-	if(this.logoutIsAvailable) {
-		var options = {
-			url: this.host + "logout",
-			type: "POST",
-			data: {
-				csrf_token: this.getCsrfToken(),
-				tiddlyweb_redirect: "/status" // workaround to marginalize automatic subsequent GET
-			},
-			callback: function(err,data,xhr) {
-				callback(err);
-			},
-			headers: {
-				"accept": "application/json",
-				"X-Requested-With": "TiddlyWiki"
-			}
-		};
-		this.logger.log("Logging out:",options);
-		$tw.utils.httpRequest(options);
-	} else {
-		alert("This server does not support logging out. If you are using basic authentication the only way to logout is close all browser windows");
-		callback(null);
-	}
-};
-
-/*
-Retrieve the CSRF token from its cookie
-*/
-MultiWikiClientAdaptor.prototype.getCsrfToken = function() {
-	var regex = /^(?:.*; )?csrf_token=([^(;|$)]*)(?:;|$)/,
-		match = regex.exec(document.cookie),
-		csrf = null;
-	if (match && (match.length === 2)) {
-		csrf = match[1];
-	}
-	return csrf;
-};
-
-/*
 Get details of changed tiddlers from the server
 */
 MultiWikiClientAdaptor.prototype.getUpdatedTiddlers = function(syncer,callback) {
 	var self = this;
+	// Do nothing if there's already a connection in progress.
+	if(this.serverUpdateConnectionStatus !== SERVER_NOT_CONNECTED) {
+		return callback(null,{
+			modifications: [],
+			deletions: []
+		});
+	}
+	// Try to connect a server stream
+	this.setUpdateConnectionStatus(SERVER_CONNECTING_SSE);
+	this.connectServerStream({
+		syncer: syncer,
+		onerror: function(err) {
+			self.logger.log("Error connecting SSE stream",err);
+			// If the stream didn't work, try polling
+			self.setUpdateConnectionStatus(SERVER_POLLING);
+			self.pollServer({
+				callback: function(err,changes) {
+					self.setUpdateConnectionStatus(SERVER_NOT_CONNECTED);
+					callback(null,changes);
+				}
+			});
+		},
+		onopen: function() {
+			self.setUpdateConnectionStatus(SERVER_CONNECTED_SSE);
+			// The syncer is expecting a callback but we don't have any data to send
+			callback(null,{
+				modifications: [],
+				deletions: []
+			});
+		}
+	});
+};
+
+/*
+Attempt to establish an SSE stream with the server and transfer tiddler changes. Options include:
+
+syncer: reference to syncer object used for storing data
+onopen: invoked when the stream is successfully opened
+onerror: invoked if there is an error
+*/
+MultiWikiClientAdaptor.prototype.connectServerStream = function(options) {
+	var self = this;
+	const eventSource = new EventSource("/recipes/" + this.recipe + "/events?last_known_tiddler_id=" + this.last_known_tiddler_id);
+	eventSource.onerror = function(event) {
+		if(options.onerror) {
+			options.onerror(event);
+		}
+	}
+	eventSource.onopen = function(event) {
+		if(options.onopen) {
+			options.onopen(event);
+		}
+	}
+	eventSource.addEventListener("change", function(event) {
+		const data = $tw.utils.parseJSONSafe(event.data);
+		if(data) {
+			console.log("SSE data",data)
+			if(data.is_deleted) {
+				if(data.tiddler_id > self.last_known_tiddler_id) {
+					self.last_known_tiddler_id = data.tiddler_id;
+				}
+				self.removeTiddlerInfo(data.title);
+				delete options.syncer.tiddlerInfo[data.title];
+				options.syncer.logger.log("Deleting tiddler missing from server:",data.title);
+				options.syncer.wiki.deleteTiddler(data.title);
+				options.syncer.processTaskQueue();
+			} else {
+				self.setTiddlerInfo(data.title,data.tiddler_id,data.bag_name);
+				options.syncer.storeTiddler(data.tiddler);
+			}
+		}
+	});
+};
+
+/*
+Poll the server for changes. Options include:
+
+callback: invoked on completion as (err,changes)
+*/
+MultiWikiClientAdaptor.prototype.pollServer = function(options) {
+	var self = this;
 	$tw.utils.httpRequest({
 		url: this.host + "recipes/" + this.recipe + "/tiddlers.json",
 		data: {
-			last_known_tiddler_id: this.last_known_tiddler_id
+			last_known_tiddler_id: this.last_known_tiddler_id,
+			include_deleted: "true"
 		},
 		callback: function(err,data) {
 			// Check for errors
 			if(err) {
-				return callback(err);
+				return options.callback(err);
 			}
 			var modifications = [],
 				deletions = [];
@@ -196,7 +229,7 @@ MultiWikiClientAdaptor.prototype.getUpdatedTiddlers = function(syncer,callback) 
 				}
 			});
 			// Invoke the callback with the results
-			callback(null,{
+			options.callback(null,{
 				modifications: modifications,
 				deletions: deletions
 			});
@@ -232,14 +265,12 @@ MultiWikiClientAdaptor.prototype.saveTiddler = function(tiddler,callback,options
 				$tw.browserStorage.removeTiddlerFromLocalStorage(tiddler.fields.title)
 			}
 			// Save the details of the new revision of the tiddler
-			var etag = request.getResponseHeader("Etag");
-			if(!etag) {
-				callback("Response from server is missing required `etag` header");
-			} else {
-				var etagInfo = self.parseEtag(etag);
-				// Invoke the callback
-				callback(null,{},etagInfo.revision);
-			}
+			var revision = request.getResponseHeader("X-Revision-Number"),
+				bag_name = request.getResponseHeader("X-Bag-Name");
+console.log(`Saved ${tiddler.fields.title} with revision ${revision} and bag ${bag_name}`)
+			// Invoke the callback
+			self.setTiddlerInfo(tiddler.fields.title,revision,bag_name);
+			callback(null,{bag: bag_name},revision);
 		}
 	});
 };
@@ -252,10 +283,15 @@ MultiWikiClientAdaptor.prototype.loadTiddler = function(title,callback) {
 	$tw.utils.httpRequest({
 		url: this.host + "recipes/" + encodeURIComponent(this.recipe) + "/tiddlers/" + encodeURIComponent(title),
 		callback: function(err,data,request) {
-			if(err) {
+			if(err === 404) {
+				return callback(null,null);
+			} else if(err) {
 				return callback(err);
 			}
 			// Invoke the callback
+			var revision = request.getResponseHeader("X-Revision-Number"),
+				bag_name = request.getResponseHeader("X-Bag-Name");
+			self.setTiddlerInfo(title,revision,bag_name);
 			callback(null,$tw.utils.parseJSONSafe(data));
 		}
 	});
@@ -289,39 +325,6 @@ MultiWikiClientAdaptor.prototype.deleteTiddler = function(title,callback,options
 			callback(null,null);
 		}
 	});
-};
-
-/*
-Split an MWS Etag into its constituent parts. For example:
-
-```
-"tiddler:mybag/946151"
-```
-
-Note that the value includes the opening and closing double quotes.
-
-The parts are:
-
-```
-"tiddler:<bag>/<revision>"
-```
-*/
-MultiWikiClientAdaptor.prototype.parseEtag = function(etag) {
-	const PREFIX = "\"tiddler:";
-	if(etag.startsWith(PREFIX)) {
-		const slashPos = etag.indexOf("/");
-		if(slashPos !== -1) {
-			const bag_name = etag.slice(PREFIX.length,slashPos),
-				revision = parseInt(etag.slice(slashPos + 1),10);
-			if(!isNaN(revision)) {
-				return {
-					bag_name: bag_name,
-					revision: revision
-				};
-			}
-		}
-	}
-	return null;
 };
 
 if($tw.browser && document.location.protocol.substr(0,4) === "http" ) {
