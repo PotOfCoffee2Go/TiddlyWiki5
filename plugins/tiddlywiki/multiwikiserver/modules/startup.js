@@ -20,7 +20,8 @@ exports.synchronous = true;
 
 exports.startup = function() {
 	const store = setupStore();
-	loadStore(store);
+//	loadStore(store);
+	loadTNR(store);
 	$tw.mws = {
 		store: store,
 		serverManager: new ServerManager({
@@ -84,6 +85,34 @@ function loadStore(store) {
 	store.saveBagTiddler({title: "$:/SiteTitle",text: "Bag Beta"},"bag-beta");
 	store.saveBagTiddler({title: "$:/SiteTitle",text: "Bag Gamma"},"bag-gamma");
 	console.timeEnd("mws-initial-load");
+}
+
+// TW5-Node-RED recipes
+function loadTNR(store) {
+	const path = require("path");
+	// Performance timing
+	console.time("mws-initial-load");
+	// Copy TiddlyWiki core editions
+	function copyEdition(options) {
+		console.log(`Copying TNR edition ${options.recipeName}`);
+		store.createBag(options.bagName,options.bagDescription);
+		store.createRecipe(options.recipeName,[options.bagName],options.recipeDescription);
+		store.saveTiddlersFromPath(path.resolve($tw.boot.corePath,$tw.config.editionsPath,options.tiddlersPath),options.bagName);
+	}
+	copyEdition({
+		bagName: "template",
+		bagDescription: "TW5-Node-RED template",
+		recipeName: "template",
+		recipeDescription: "TW5-Node-RED Welcome",
+		tiddlersPath: "/home/poc2gopi/Documents/sites/tw5-node-red-beta/public/app/template/tiddlers"
+	});
+	copyEdition({
+		bagName: "welcome",
+		bagDescription: "TW5-Node-RED Welcome",
+		recipeName: "welcome",
+		recipeDescription: "TW5-Node-RED Welcome",
+		tiddlersPath: "/home/poc2gopi/Documents/sites/tw5-node-red-beta/public/app/welcome/tiddlers"
+	});
 }
 
 function ServerManager(store) {
