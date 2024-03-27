@@ -102,7 +102,7 @@ function loadTNR(store) {
 	}
 	// Copy editions
 	function copyEdition(options) {
-		console.log(`Copying TNR edition ${options.recipeName}`);
+		console.log(`Copying TNR ${options.recipeName} edition`);
 		store.createBag(options.bagName,options.bagDescription);
 		store.createRecipe(options.recipeName,[options.bagName],options.recipeDescription);
 		store.saveTiddlersFromPath(path.resolve($tw.boot.corePath,$tw.config.editionsPath,options.tiddlersPath),options.bagName);
