@@ -16,7 +16,8 @@ var CONFIG_HOST_TIDDLER = "$:/config/multiwikiclient/host",
 	DEFAULT_HOST_TIDDLER = "$protocol$//$host$/",
 	BAG_STATE_TIDDLER = "$:/state/multiwikiclient/tiddlers/bag",
 	REVISION_STATE_TIDDLER = "$:/state/multiwikiclient/tiddlers/revision",
-	CONNECTION_STATE_TIDDLER = "$:/state/multiwikiclient/connection";
+	CONNECTION_STATE_TIDDLER = "$:/state/multiwikiclient/connection",
+	INCOMING_UPDATES_FILTER_TIDDLER = "$:/config/multiwikiclient/incoming-updates-filter";
 
 var SERVER_NOT_CONNECTED = "NOT CONNECTED",
 	SERVER_CONNECTING_SSE = "CONNECTING SSE",
@@ -32,6 +33,8 @@ function MultiWikiClientAdaptor(options) {
 	this.isLoggedIn = false;
 	this.isReadOnly = false;
 	this.logoutIsAvailable = true;
+	// Compile the dirty tiddler filter
+	this.incomingUpdatesFilterFn = this.wiki.compileFilter(this.wiki.getTiddlerText(INCOMING_UPDATES_FILTER_TIDDLER));
 	this.setUpdateConnectionStatus(SERVER_NOT_CONNECTED);
 }
 
@@ -180,18 +183,21 @@ MultiWikiClientAdaptor.prototype.connectServerStream = function(options) {
 		const data = $tw.utils.parseJSONSafe(event.data);
 		if(data) {
 			console.log("SSE data",data)
+			if(data.tiddler_id > self.last_known_tiddler_id) {
+				self.last_known_tiddler_id = data.tiddler_id;
+			}
 			if(data.is_deleted) {
-				if(data.tiddler_id > self.last_known_tiddler_id) {
-					self.last_known_tiddler_id = data.tiddler_id;
-				}
 				self.removeTiddlerInfo(data.title);
 				delete options.syncer.tiddlerInfo[data.title];
 				options.syncer.logger.log("Deleting tiddler missing from server:",data.title);
 				options.syncer.wiki.deleteTiddler(data.title);
 				options.syncer.processTaskQueue();
 			} else {
-				self.setTiddlerInfo(data.title,data.tiddler_id,data.bag_name);
-				options.syncer.storeTiddler(data.tiddler);
+				var result = self.incomingUpdatesFilterFn.call(self.wiki,self.wiki.makeTiddlerIterator([data.title]));
+				if(result.length > 0) {
+					self.setTiddlerInfo(data.title,data.tiddler_id,data.bag_name);
+					options.syncer.storeTiddler(data.tiddler);	
+				}
 			}
 		}
 	});
