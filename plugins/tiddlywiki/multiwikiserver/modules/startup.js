@@ -113,7 +113,7 @@ function loadTNR(store) {
 			bagName: editionName,
 			bagDescription: `TW5-Node-RED ${editionName}`,
 			recipeName: editionName,
-			recipeDescription: "TW5-Node-RED ${editionName}",
+			recipeDescription: `TW5-Node-RED ${editionName}`,
 			tiddlersPath: path.resolve("./", `public/app/${editionName}/tiddlers`)
 		})
 	})
