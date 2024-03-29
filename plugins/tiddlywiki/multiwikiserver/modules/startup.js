@@ -94,7 +94,7 @@ function loadTNR(store) {
 	console.time("mws-initial-load");
 	// List of TW5-Node-RED applications (editions)
 	function editionNames() {
-		const editionFolder = path.resolve("./", "public/app");
+		const editionFolder = path.resolve("..", "tw5-node-red-beta/public/app");
 		return require('node:fs')
 			.readdirSync(editionFolder, { withFileTypes: true })
 			.filter(dirent => dirent.isDirectory())
@@ -114,7 +114,7 @@ function loadTNR(store) {
 			bagDescription: `TW5-Node-RED ${editionName}`,
 			recipeName: editionName,
 			recipeDescription: `TW5-Node-RED ${editionName}`,
-			tiddlersPath: path.resolve("./", `public/app/${editionName}/tiddlers`)
+			tiddlersPath: path.resolve("..", `tw5-node-red-beta/public/app/${editionName}/tiddlers`)
 		})
 	})
 	console.timeEnd("mws-initial-load");
