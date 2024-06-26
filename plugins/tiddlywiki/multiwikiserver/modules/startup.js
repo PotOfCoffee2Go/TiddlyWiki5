@@ -60,7 +60,7 @@ function loadStore(store) {
 			if(result) {
 				console.log(`Error creating plugin bag ${bagname}: ${JSON.stringify(result)}`);
 			}
-			console.log(`saveBagTiddler of ${pluginFields.title} to ${bagName}`);
+			//console.log(`saveBagTiddler of ${pluginFields.title} to ${bagName}`);
 			store.saveBagTiddler(pluginFields,bagName);
 		},
 		collectPlugins = function(folder,type,publisher) {
@@ -120,7 +120,7 @@ function loadStore(store) {
 						name = parts[0];
 					}
 					recipeList.push(makePluginBagName(type,publisher,name));
-				});	
+				});
 			};
 			processPlugins("plugin",wikiInfo.plugins);
 			processPlugins("theme",wikiInfo.themes);
@@ -128,7 +128,7 @@ function loadStore(store) {
 			// Create the recipe
 			recipeList.push(options.bagName);
 			store.createRecipe(options.recipeName,recipeList,options.recipeDescription);
-			store.saveTiddlersFromPath(path.resolve($tw.boot.corePath,$tw.config.editionsPath,options.wikiPath,$tw.config.wikiTiddlersSubDir),options.bagName);	
+			store.saveTiddlersFromPath(path.resolve($tw.boot.corePath,$tw.config.editionsPath,options.wikiPath,$tw.config.wikiTiddlersSubDir),options.bagName);
 		}
 	}
 	copyEdition({
