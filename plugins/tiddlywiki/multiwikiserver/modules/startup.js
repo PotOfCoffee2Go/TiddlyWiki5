@@ -95,6 +95,7 @@ function loadStore(store) {
 	});
 	// Copy TiddlyWiki core editions
 	function copyEdition(options) {
+		return;
 		// Read the tiddlywiki.info file
 		const wikiInfoPath = path.resolve($tw.boot.corePath,$tw.config.editionsPath,options.wikiPath,$tw.config.wikiInfo);
 		let wikiInfo;
