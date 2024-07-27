@@ -14,7 +14,7 @@ GET /bags/:bag_name/tiddler/:title/blob
 
 exports.method = "GET";
 
-exports.path = /^\/bags\/([^\/]+)\/tiddlers\/([^\/]+)\/blob$/;
+exports.path = /^\/bags\/([^\/]+)\/attachment\/([^\/]+)$/;
 
 exports.handler = function(request,response,state) {
 	// Get the  parameters

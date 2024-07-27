@@ -133,7 +133,7 @@ SqlTiddlerStore.prototype.processOutgoingTiddler = function(tiddlerFields,tiddle
 			tiddlerFields,
 			{
 				text: undefined,
-				_canonical_uri: `/bags/${$tw.utils.encodeURIComponentExtended(bag_name)}/tiddlers/${$tw.utils.encodeURIComponentExtended(tiddlerFields.title)}/blob`
+				_canonical_uri: `/bags/${$tw.utils.encodeURIComponentExtended(bag_name)}/attachment/${$tw.utils.encodeURIComponentExtended(tiddlerFields.title)}`
 			}
 		);
 	} else {
@@ -298,7 +298,7 @@ SqlTiddlerStore.prototype.getBagTiddler = function(title,bag_name) {
 			tiddlerInfo,
 			{
 				tiddler: this.processOutgoingTiddler(tiddlerInfo.tiddler,tiddlerInfo.tiddler_id,bag_name,tiddlerInfo.attachment_blob)
-			});	
+			});
 	} else {
 		return null;
 	}
